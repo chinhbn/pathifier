@@ -1,0 +1,49 @@
+source("http://bioconductor.org/biocLite.R")
+biocLite(c("ConsensusClusterPlus"))
+library(ConsensusClusterPlus)
+
+###Because the genesets are correlated with overlapped genes, It is required that the 
+###centroid gene sets should be identified to perform better partition for different groups of Patients/Controls
+
+##Input was the top 29 deregulated genesets
+
+diff.c7.pds=read.csv("gene and path PDS list/diff.c7.txt",sep="\t")
+
+###Perform consensus clustering on the columns of the matrix (ie. the geneset)
+dim(diff.c7.pds)
+#                              wk0_hc_3026 wk0_hc_3020 wk0_hc_3019 wk0_hc_3013 wk0_hc_3010
+#GSE27786_BCELL_VS_MONO_MAC_UP   0.2386301   0.2507313   0.4736114   0.4617989   0.0000000
+
+
+##Transform so the matrix have the genesets as per columns
+data=t(as.matrix(diff.c7.pds))
+#dim(data)
+#[1] 43 29
+
+###Order the matrix with highest median absolute deviation, otherwise can filter the top 5000 from larger dataset
+mads=apply(data,1,mad)
+d=data[rev(order(mads)),]
+
+#summary statistics swept out.
+#median center genes
+d = as.matrix(sweep(d,1, apply(d,1,median,na.rm=T)))
+
+#Consensus clustering performed with 80% item resampling (pItem), 80% gene resampling (pFeature), a maximum evalulated k of 6 (maxK)
+#50 resamplings (reps), agglomerative heirarchical clustering (clusterAlg) upon 1- Pearson correlation
+# run consensus cluster, with HC
+results.hc.euclidean = ConsensusClusterPlus(d,maxK=6,reps=100,pItem=0.8,pFeature=0.8,
+                                            title="c7.diff.pds.euclidean",clusterAlg="hc",
+                                            distance="euclidean",seed=199,plot="pdf")
+
+# k-means clustering:Note: The km (kmeans) 
+results.kmdist = ConsensusClusterPlus(dist(d),maxK=6,reps=100,pItem=0.8,pFeature=0.8,
+                                      clusterAlg="kmdist",
+                                      title="c7.diff.pds.kmeansClustering",plot="pdf",seed=299)
+##PAM
+results.pam = ConsensusClusterPlus(d,maxK=6,reps=100,pItem=0.8,pFeature=0.8,
+                                   clusterAlg="pam",distance="euclidean",
+                                   title="c7.diff.pds.pam",plot="pdf",seed=399)
+
+#output of ConsensusClusterPlus is a list, in which the element of the
+#list corresponds to results from the kth cluster
+names(results.kmdist[[3]])
