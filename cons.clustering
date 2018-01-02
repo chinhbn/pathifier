@@ -2,29 +2,28 @@ source("http://bioconductor.org/biocLite.R")
 biocLite(c("ConsensusClusterPlus"))
 library(ConsensusClusterPlus)
 
-###Because the genesets are correlated with overlapped genes, It is required that the 
-###centroid gene sets should be identified to perform better partition for different groups of Patients/Controls
+###Because the genesets compose of overlapped genes, it is required that the centroid gene sets should be identified to perform better partition for different groups of Patients/Controls
 
 ##Input was the top 29 deregulated genesets
 
 diff.c7.pds=read.csv("gene and path PDS list/diff.c7.txt",sep="\t")
 
 ###Perform consensus clustering on the columns of the matrix (ie. the geneset)
-dim(diff.c7.pds)
+head(diff.c7.pds)
 #                              wk0_hc_3026 wk0_hc_3020 wk0_hc_3019 wk0_hc_3013 wk0_hc_3010
 #GSE27786_BCELL_VS_MONO_MAC_UP   0.2386301   0.2507313   0.4736114   0.4617989   0.0000000
 
 
-##Transform so the matrix have the genesets as per columns
+##Transform the matrix so the genesets become the columns
 data=t(as.matrix(diff.c7.pds))
 #dim(data)
 #[1] 43 29
 
-###Order the matrix with highest median absolute deviation, otherwise can filter the top 5000 from larger dataset
+OPTIONAL###Order the matrix with highest median absolute deviation, otherwise can filter the top 5000 from larger dataset
 mads=apply(data,1,mad)
 d=data[rev(order(mads)),]
 
-#summary statistics swept out.
+OPTIONAL#summary statistics swept out.
 #median center genes
 d = as.matrix(sweep(d,1, apply(d,1,median,na.rm=T)))
 
@@ -47,3 +46,96 @@ results.pam = ConsensusClusterPlus(d,maxK=6,reps=100,pItem=0.8,pFeature=0.8,
 #output of ConsensusClusterPlus is a list, in which the element of the
 #list corresponds to results from the kth cluster
 names(results.kmdist[[3]])
+
+
+##Assessment the kmeans method on the PDS values (rows) and grouping the samples (columns) following ward.D linkage, Euclidean distance
+library("RColorBrewer")
+library("pheatmap")
+ol.pal.red <- brewer.pal(7,"YlOrRd")
+
+kmean.ward.D.k3 <- pheatmap(list(t(data), 
+                                 color = col.pal.red,
+                                 cellwidth = 5, cellheight = 6, scale = "none",
+                                 treeheight_row = 150,
+                                 cluster_rows = TRUE, cluster_cols = TRUE,
+                                 clustering_distance_rows = "euclidean", 
+                                 clustering_distance_cols = "euclidean",
+                                 clustering_method = "ward.D",#columns
+                                 kmeans_k = 3,#rows
+                                 show_rownames = TRUE, show_colnames = TRUE,
+                                 annotation_names_row = TRUE, annotation_names_col = TRUE,
+                                 drop_levels = TRUE,
+                                 fontsize_row = 6, fontsize_col = 6)
+#Repeat for kmeans 4
+kmean.ward.D.k3
+
+kmean.ward.D.k3[["kmeans"]][["cluster"]]
+clustered.data <- cbind(diff.c7.pds,kmean.ward.D.k3[["kmeans"]][["cluster"]])
+
+###bring out the centers as centroids
+fit.kmeans3=kmean.ward.D.k3[["kmeans"]]
+
+centroids=fit.kmeans3$centers
+
+##Silhouette measure is calculated for each observation to see how well it fits into the cluster 
+#that it's been assigned to. Silhouette plot shows values close to one for each observation, the fit was good
+#if there are many observations closer to zero, it's an indication that the fit was not good
+require(cluster)
+D <- daisy(as.matrix(diff.c7.pds))
+
+plot(silhouette(kmean.ward.D.k3[["kmeans"]][["cluster"]], D), col=1:3)
+plot(silhouette(kmean.ward.D.k4[["kmeans"]][["cluster"]], D), col=1:4)
+
+###Patients partrition 
+###Transform so the matrix have the patients as per columns (cons.clustering per rows)
+data=centroids
+
+dim(data)
+#[1]3 26
+
+data=data[,colnames(data)%in%row.names(patients.class)]
+###median absolute deviation
+
+mads=apply(data,1,mad)
+d=data[rev(order(mads)),]
+
+#agglomerative hierarchical clustering algorithm using Pearson correlation distance,
+#array with the same shape as x, but with the summary statistics swept out.
+#median center genes
+d = as.matrix(sweep(d,1, apply(d,1,median,na.rm=T)))
+
+
+########Consensus Clustering on centroids path
+results.hc.euclidean = ConsensusClusterPlus(d,maxK=6,reps=100,pItem=0.8,pFeature=0.8,
+                                            title="patients.part.euclidean",clusterAlg="hc",
+                                            distance="euclidean",seed=199,plot="pdf")
+
+# k-means clustering:Note: The km (kmeans) option only supports a euclidean distance metric when supplying a data matrix.  
+results.kmdist = ConsensusClusterPlus(dist(t(d)),maxK=6,reps=100,pItem=0.8,
+                                      clusterAlg="kmdist",
+                                      title="patients.part.kmeansClustering",plot="pdf",seed=299)
+
+results.pam = ConsensusClusterPlus(d,maxK=6,reps=100,pItem=0.8,pFeature=0.8,
+                                   clusterAlg="pam",distance="euclidean",
+                                   title="patients.part.pam",plot="pdf",seed=399)
+
+
+####HC appears to partition 3 groups of patients and controls
+D.patients <- daisy(as.matrix(t(data)))
+str(D.patients)
+
+#Compare between 3 and 4 kmeans 
+plot(silhouette(results.kmdist [[2]][["consensusClass"]], D.patients), col=1:2)
+
+plot(silhouette(results.kmdist [[3]][["consensusClass"]], D.patients), col=1:3)
+
+plot(silhouette(results.kmdist[[4]][["consensusClass"]], D.patients), col=1:4)
+
+clustnum.pat=results.kmdist[[3]][["consensusClass"]]
+
+clustered.data.patients <- cbind(t(data), as.data.frame(clustnum.pat))
+
+
+
+
+
