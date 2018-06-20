@@ -14,98 +14,73 @@ head(diff.c7.pds)
 #GSE27786_BCELL_VS_MONO_MAC_UP   0.2386301   0.2507313   0.4736114   0.4617989   0.0000000
 
 
-##Transform the matrix so the genesets become the columns
+##Transform the matrix so the gene sets become the columns
 data=t(as.matrix(diff.c7.pds))
 #dim(data)
 #[1] 43 29
 
-OPTIONAL###Order the matrix with highest median absolute deviation, otherwise can filter the top 5000 from larger dataset
+###Order the matrix with highest median absolute deviation
 mads=apply(data,1,mad)
 d=data[rev(order(mads)),]
 
-OPTIONAL#summary statistics swept out.
-#median center genes
-d = as.matrix(sweep(d,1, apply(d,1,median,na.rm=T)))
 
 #Consensus clustering performed with 80% item resampling (pItem), 80% gene resampling (pFeature), a maximum evalulated k of 6 (maxK)
-#50 resamplings (reps), agglomerative heirarchical clustering (clusterAlg) upon 1- Pearson correlation
-# run consensus cluster, with HC
+#100 resamplings (reps), 
+#run consensus cluster, with HC
 results.hc.euclidean = ConsensusClusterPlus(d,maxK=6,reps=100,pItem=0.8,pFeature=0.8,
-                                            title="c7.diff.pds.euclidean",clusterAlg="hc",
+                                            title="c7.diff.pds.euclidean",clusterAlg="hc",#hierarchical clustering (clusterAlg) upon 1- Pearson correlation
                                             distance="euclidean",seed=199,plot="pdf")
 
-# k-means clustering:Note: The km (kmeans) 
-results.kmdist = ConsensusClusterPlus(dist(d),maxK=6,reps=100,pItem=0.8,pFeature=0.8,
-                                      clusterAlg="kmdist",
+#k-means clustering:
+results.kmdist = ConsensusClusterPlus(dist(t(d)),maxK=6,reps=100,pItem=0.8,pFeature=0.8,
+                                      clusterAlg="kmdist",#only supports a euclidean distance
                                       title="c7.diff.pds.kmeansClustering",plot="pdf",seed=299)
 ##PAM
 results.pam = ConsensusClusterPlus(d,maxK=6,reps=100,pItem=0.8,pFeature=0.8,
                                    clusterAlg="pam",distance="euclidean",
                                    title="c7.diff.pds.pam",plot="pdf",seed=399)
+                                   
+#output of ConsensusClusterPlus
+results.pam[[3]]$consensusClass
 
-#output of ConsensusClusterPlus is a list, in which the element of the
-#list corresponds to results from the kth cluster
-names(results.kmdist[[3]])
-
-
-##Assessment the kmeans method on the PDS values (rows) and grouping the samples (columns) following ward.D linkage, Euclidean distance
-library("RColorBrewer")
-library("pheatmap")
-ol.pal.red <- brewer.pal(7,"YlOrRd")
-
-kmean.ward.D.k3 <- pheatmap(list(t(data), 
-                                 color = col.pal.red,
-                                 cellwidth = 5, cellheight = 6, scale = "none",
-                                 treeheight_row = 150,
-                                 cluster_rows = TRUE, cluster_cols = TRUE,
-                                 clustering_distance_rows = "euclidean", 
-                                 clustering_distance_cols = "euclidean",
-                                 clustering_method = "ward.D",#columns
-                                 kmeans_k = 3,#rows
-                                 show_rownames = TRUE, show_colnames = TRUE,
-                                 annotation_names_row = TRUE, annotation_names_col = TRUE,
-                                 drop_levels = TRUE,
-                                 fontsize_row = 6, fontsize_col = 6)
-#Repeat for kmeans 4
-kmean.ward.D.k3
-
-kmean.ward.D.k3[["kmeans"]][["cluster"]]
-clustered.data <- cbind(diff.c7.pds,kmean.ward.D.k3[["kmeans"]][["cluster"]])
-
-###bring out the centers as centroids
-fit.kmeans3=kmean.ward.D.k3[["kmeans"]]
-
-centroids=fit.kmeans3$centers
-
-##Silhouette measure is calculated for each observation to see how well it fits into the cluster 
-#that it's been assigned to. Silhouette plot shows values close to one for each observation, the fit was good
-#if there are many observations closer to zero, it's an indication that the fit was not good
+results.kmdist[[3]]$consensusClass
+                                   
+##Silhouette measure (package cluster) is a metric calculated for each observation to see how well the individual fits into the cluster 
+#Silhouette values close to one for each observation: the fit was good
+#Silhouette closer to zero: the fit was not good
 require(cluster)
+
 D <- daisy(as.matrix(diff.c7.pds))
 
-plot(silhouette(kmean.ward.D.k3[["kmeans"]][["cluster"]], D), col=1:3)
-plot(silhouette(kmean.ward.D.k4[["kmeans"]][["cluster"]], D), col=1:4)
+plot(silhouette(results.kmdist[[3]]$consensusMatrix, D), col=1:3)
+plot(silhouette(results.kmdist[[4]]$consensusMatrix, D), col=1:4)
 
-###Patients partrition 
+#Draw a kmeans with visualization
+library(pheatmap)
+kmeans3 <- pheatmap(d,kmeans_k = 3)
+                                                            
+#create the cluster table from cons.clustering result
+clustered.data <- cbind(diff.c7.pds,kmeans3[["kmeans"]])
+
+###bring out the centers as centroids
+centroids=kmeans3$centers
+
+##Patients partrition 
 ###Transform so the matrix have the patients as per columns (cons.clustering per rows)
 data=centroids
 
 dim(data)
 #[1]3 26
 
-data=data[,colnames(data)%in%row.names(patients.class)]
 ###median absolute deviation
-
 mads=apply(data,1,mad)
 d=data[rev(order(mads)),]
 
-#agglomerative hierarchical clustering algorithm using Pearson correlation distance,
-#array with the same shape as x, but with the summary statistics swept out.
 #median center genes
 d = as.matrix(sweep(d,1, apply(d,1,median,na.rm=T)))
 
 
-########Consensus Clustering on centroids path
+########Consensus Clustering on centroids
 results.hc.euclidean = ConsensusClusterPlus(d,maxK=6,reps=100,pItem=0.8,pFeature=0.8,
                                             title="patients.part.euclidean",clusterAlg="hc",
                                             distance="euclidean",seed=199,plot="pdf")
